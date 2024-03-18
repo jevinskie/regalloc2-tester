@@ -79,6 +79,13 @@ impl IrBuilder {
                         OperandPos::Late
                     ))});
                 }
+                "return" => {
+                    assert_eq!(words.len(), 1);
+                    self.instns.push(Instn {
+                        index: Inst::new(self.next_instn_index),
+                        instntype: InstnType::Return,
+                    })
+                }
                 v => {
                     if v.starts_with("v") {
                         let parts: Vec<&str> = line.split("=").collect();
@@ -182,6 +189,7 @@ enum InstnType {
     },
     Output(Operand),
     Input(Operand),
+    Return,
 }
 
 impl Instn {
