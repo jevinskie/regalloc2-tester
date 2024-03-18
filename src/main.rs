@@ -1,4 +1,6 @@
-use regalloc2::{Block, VReg, Inst, Operand, OperandConstraint, OperandKind, OperandPos, RegClass, InstRange};
+use std::sync::atomic::AtomicUsize;
+
+use regalloc2::{Block, VReg, Inst, Operand, OperandConstraint, OperandKind, OperandPos, RegClass, InstRange, PRegSet};
 
 fn main() {
     let (input, no_of_regs) = get_input();
@@ -7,9 +9,100 @@ fn main() {
     println!("{:?}", ir);
 }
 
+static MAX_VREG_NO: AtomicUsize = AtomicUsize::new(0);
+
 #[derive(Debug)]
 struct Ir {
     blocks: Vec<BasicBlock>,
+}
+
+impl Ir {
+    fn find_instn(&self, insn: Inst) -> Option<&Instn> {
+        for bb in self.blocks.iter() {
+            for instn in bb.instns.iter() {
+                if instn.index == insn {
+                    return Some(instn);
+                }
+            }
+        }
+        None
+    }
+}
+
+impl regalloc2::Function for Ir {
+    fn num_insts(&self) -> usize {
+        self.blocks.iter()
+            .map(|block| block.instns.len())
+            .sum()
+    }
+
+    fn entry_block(&self) -> Block {
+        self.blocks[0].index
+    }
+
+    fn num_blocks(&self) -> usize {
+        self.blocks.len()
+    }
+
+    fn block_insns(&self, block: Block) -> regalloc2::InstRange {
+        let bb = &self.blocks[block.index()];
+        let first_inst_index = bb.instns[0].index;
+        let last_inst_index = bb.instns.last().unwrap().index;
+        InstRange::new(first_inst_index, last_inst_index.next())
+    }
+
+    fn block_succs(&self, block: Block) -> &[Block] {
+        &self.blocks[block.index()].succs
+    }
+
+    fn block_preds(&self, block: Block) -> &[Block] {
+        &self.blocks[block.index()].preds
+    }
+
+    fn block_params(&self, block: Block) -> &[VReg] {
+        &self.blocks[block.index()].params
+    }
+
+    fn is_ret(&self, insn: Inst) -> bool {
+        let instn = self.find_instn(insn)
+            .expect(&format!("Failed to find instruction with index {:?}", insn));
+        instn.is_ret()
+    }
+
+    fn is_branch(&self, insn: Inst) -> bool {
+        let instn = self.find_instn(insn)
+            .expect(&format!("Failed to find instruction with index {:?}", insn));
+        instn.is_branch()
+    }
+
+    fn branch_blockparams(&self, block: Block, insn: Inst, succ_idx: usize) -> &[VReg] {
+        let bb = &self.blocks[block.index()];
+        for instn in bb.instns.iter() {
+            if instn.index == insn {
+                return instn.blockparams_to(succ_idx);
+            }
+        }
+        eprintln!("The instruction doesnt exist in the block");
+        &[]
+    }
+
+    fn inst_operands(&self, insn: Inst) -> &[Operand] {
+        let instn = self.find_instn(insn)
+            .expect(&format!("Failed to find instruction with index {:?}", insn));
+        instn.operands()
+    }
+
+    fn num_vregs(&self) -> usize {
+        get_max_vreg() + 1
+    }
+
+    fn inst_clobbers(&self, insn: Inst) -> regalloc2::PRegSet {
+        PRegSet::empty()
+    }
+
+    fn spillslot_size(&self, regclass: RegClass) -> usize {
+        1
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -72,12 +165,13 @@ impl IrBuilder {
                     let reg = parse_vreg(words[1]);
                     self.instns.push(Instn {
                         index: Inst::new(self.next_instn_index),
-                        instntype: InstnType::Output(Operand::new(
-                        reg,
-                        OperandConstraint::Any,
-                        OperandKind::Use,
-                        OperandPos::Late
-                    ))});
+                        instntype: InstnType::Output([Operand::new(
+                            reg,
+                            OperandConstraint::Any,
+                            OperandKind::Use,
+                            OperandPos::Late
+                        )])
+                    });
                 }
                 "return" => {
                     assert_eq!(words.len(), 1);
@@ -97,20 +191,7 @@ impl IrBuilder {
                         if cmd == "input" {
                             self.instns.push(Instn::input(outreg, self.next_instn_index));
                         } else {
-                            let mut args = vec![];
-                            for arg in &input[1..] {
-                                if arg.starts_with("v") {
-                                    args.push(InstnOperand::Operand(Operand::new(
-                                        parse_vreg(arg),
-                                        OperandConstraint::Any,
-                                        OperandKind::Use,
-                                        OperandPos::Early
-                                    )));
-                                } else {
-                                    args.push(InstnOperand::Constant(arg.to_string()));
-                                }
-                            }
-                            self.instns.push(Instn::new(cmd, outreg, args, self.next_instn_index));
+                            self.instns.push(Instn::new(cmd, outreg, &input[1..], self.next_instn_index));
                         }
                     } else {
                         panic!("Unrecognized word: {}", v);
@@ -161,25 +242,87 @@ impl Instn {
             _ => panic!("Attempting to find a `to` on a non-branch instruction")
         }
     }
+
+    fn is_ret(&self) -> bool {
+        match &self.instntype {
+            InstnType::Return => true,
+            _ => false
+        }
+    }
+
+    fn is_branch(&self) -> bool {
+        match &self.instntype {
+            InstnType::CondBranch { .. } => true,
+            InstnType::Branch { .. } => true,
+            _ => false
+        }
+    }
+
+    fn blockparams_to(&self, succidx: usize) -> &[VReg] {
+        match &self.instntype {
+            InstnType::CondBranch { to, branchargs, .. } => {
+                if to.index() == succidx {
+                    &branchargs
+                } else {
+                    eprintln!("The branch doesnt go to succidx");
+                    &[]
+                }
+            }
+            InstnType::Branch { to, branchargs, .. } => {
+                if to.index() == succidx {
+                    eprintln!("The branch doesnt go to succidx");
+                    &branchargs
+                } else {
+                    &[]
+                }
+            }
+            _ => {
+                eprintln!("The instn isnt a branch");
+                &[]
+            }
+        }
+    }
+
+    fn operands(&self) -> &[Operand] {
+        match &self.instntype {
+            InstnType::Normal { operands, .. } => {
+                &operands
+            }
+            InstnType::CondBranch { args, .. } => {
+                args.as_slice()
+            }
+            InstnType::Input(op) => {
+                op.as_slice()
+            }
+            InstnType::Output(op) => {
+                op.as_slice()
+            }
+            _ => {
+                println!("No operands");
+                &[]
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
 enum InstnOperand {
-    Operand(Operand),
+    /// An index into a vector of operands
+    Operand(usize),
     Constant(String)
 }
 
 #[derive(Clone, Debug)]
 enum InstnType {
     Normal {
-        out: Operand,
         cmd: String,
+        /// First operand is the output operand
         args: Vec<InstnOperand>,
+        operands: Vec<Operand>,
     },
     CondBranch {
         cmp: String,
-        firstarg: Operand,
-        secondarg: Operand,
+        args: [Operand; 2],
         to: Block,
         branchargs: Vec<VReg>,
     },
@@ -187,24 +330,40 @@ enum InstnType {
         to: Block,
         branchargs: Vec<VReg>,
     },
-    Output(Operand),
-    Input(Operand),
+    Output([Operand; 1]),
+    Input([Operand; 1]),
     Return,
 }
 
 impl Instn {
-    fn new(cmd: &str, outreg: VReg, args: Vec<InstnOperand>, index: usize) -> Self {
+    fn new(cmd: &str, outreg: VReg, args: &[&str], index: usize) -> Self {
+        let mut operands = vec![Operand::new(
+            outreg.clone(),
+            OperandConstraint::Any,
+            OperandKind::Def,
+            OperandPos::Late
+        )];
+        let mut parsedargs = vec![];
+        for arg in args {
+            if arg.starts_with("v") {
+                operands.push(Operand::new(
+                    parse_vreg(arg),
+                    OperandConstraint::Any,
+                    OperandKind::Use,
+                    OperandPos::Early
+                ));
+                parsedargs.push(InstnOperand::Operand(operands.len() - 1));
+            } else {
+                parsedargs.push(InstnOperand::Constant(arg.to_string()));
+            }
+        }
+
         Self {
             index: Inst::new(index),
             instntype: InstnType::Normal {
-                out: Operand::new(
-                    outreg.clone(),
-                    OperandConstraint::Any,
-                    OperandKind::Def,
-                    OperandPos::Late
-                ),
                 cmd: cmd.to_string(),
-                args,
+                args: parsedargs,
+                operands,
             }
         }
     }
@@ -234,8 +393,7 @@ impl Instn {
             index: Inst::new(index),
             instntype: InstnType::CondBranch {
                 cmp: cmp.to_string(),
-                firstarg,
-                secondarg,
+                args: [firstarg, secondarg],
                 to: Block::new(to),
                 branchargs
             }
@@ -260,12 +418,12 @@ impl Instn {
     fn input(out: VReg, index: usize) -> Self {
         Self {
             index: Inst::new(index),
-            instntype: InstnType::Input(Operand::new(
+            instntype: InstnType::Input([Operand::new(
                 out,
                 OperandConstraint::Any,
                 OperandKind::Def,
                 OperandPos::Late,
-            ))
+            )])
         }
     }
 }
@@ -283,7 +441,18 @@ fn parse_vreg(reg: &str) -> VReg {
     assert!(reg.len() >= 2);
     assert!(reg.starts_with("v"));
     let regnum = reg[1..].parse::<usize>().unwrap();
+    update_max_vreg(regnum);
     VReg::new(regnum, RegClass::Int)
+}
+
+fn update_max_vreg(regnum: usize) {
+    use std::sync::atomic::Ordering;
+    MAX_VREG_NO.store(MAX_VREG_NO.load(Ordering::Relaxed).max(regnum), Ordering::Relaxed);
+}
+
+fn get_max_vreg() -> usize {
+    use std::sync::atomic::Ordering;
+    MAX_VREG_NO.load(Ordering::Relaxed)
 }
 
 fn get_input() -> (String, i32) {
