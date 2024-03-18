@@ -1,42 +1,48 @@
 block 0
-    v0 = input
-    v1 = input
-    if v0 > v1 goto 3 else goto 1
-
-# Every block must end in a branch or return and there
-# can't be branches in the middle of a block
-# So, I had to add these blocks 1, 2, and 3
-
-block 1
-    if v0 < v1 goto 4 else goto 2
-
-block 2
-    goto 5
-
-block 3
-    v2 = add v0 3
-    v3 = sub v2 v1
-    goto 6 v2 v3
-
-block 4
-    v4 = mul v0 v1
-    v5 = div v4 v1
-    goto 6 v4 v5
-
-block 5
-    v6 = add v0 v1
-    v7 = sub v6 v0
-    goto 6 v6 v7
-
-block 6 v8 v9
-    v10 = add v8 1
-    if v8 < v9 goto 8 v8 else goto 7 v10 v9
- 
-# Had to add this block to remove a critical edge
-block 7 v11 v12
-    goto 6 v11 v12
-
-block 8 v13
-    v14 = and v0 v13
-    output v14
-    return
+	v0 = input
+	v1 = add v0 1
+	v2 = mul v0 -1
+	v3 = add v1 v2
+	v4 = input
+	v5 = add v4 23
+	v6 = add v3 v5
+	v7 = sub v4 2
+	v8 = add v6 v7
+	v9 = add v8 5
+	v10 = sub v0 1
+	v11 = add v10 43
+	v12 = sub v4 2
+	v13 = add v12 23
+	v14 = add v11 v13
+	v15 = add v14 3
+	v16 = add v15 2
+	v17 = sub v9 v16
+	v18 = add v0 32
+	v19 = mul v2 v18
+	v20 = add v4 33
+	v21 = add v19 v20
+	v22 = add v4 2
+	v23 = add v21 v22
+	v24 = add v17 v23
+	v25 = sub v0 1
+	v26 = add v2 v25
+	v27 = add v4 1
+	v28 = add v26 v27
+	v29 = add v4 1
+	v30 = add v28 v29
+	v31 = sub v24 v30
+	v32 = add v1 v20
+	v33 = add v29 v32
+	v34 = add v0 -2
+	v35 = add v33 v34
+	v36 = add v18 2
+	v37 = add v4 23
+	v38 = add v37 2
+	v39 = add v36 v38
+	v40 = sub v39 2
+	v41 = div v40 23
+	v42 = mul v35 v41
+	v43 = add v40 2
+	v44 = add v42 v43
+	v45 = add v31 v44
+	return

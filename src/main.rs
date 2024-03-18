@@ -27,6 +27,7 @@ fn main() {
         &RegallocOptions {
             verbose_log: true,
             validate_ssa: true,
+            use_fastalloc: true,
         },
     )
     .unwrap();
