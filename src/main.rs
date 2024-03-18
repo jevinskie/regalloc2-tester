@@ -1,8 +1,8 @@
-use regalloc2::*;
+use regalloc2::{Block, VReg, Inst, Operand, OperandConstraint, OperandKind, OperandPos, RegClass, InstRange};
 
 fn main() {
     let (input, no_of_regs) = get_input();
-    let mut builder = IrBuilder::new();
+    let builder = IrBuilder::new();
     let ir = builder.build(input.lines().collect());
     println!("{:?}", ir);
 }
@@ -113,6 +113,7 @@ impl IrBuilder {
             self.next_instn_index += 1;
         }
         self.end_bb();
+        self.compute_preds();
         Ir { blocks: self.blocks }
     }
 
@@ -127,6 +128,15 @@ impl IrBuilder {
         self.succs.clear();
         self.blockparams.clear();
         self.instns.clear();
+    }
+
+    fn compute_preds(&mut self) {
+        for i in 0..self.blocks.len() {
+            let bb = self.blocks[i].clone();
+            for succindex in bb.succs.iter() {
+                self.blocks[succindex.index()].preds.push(bb.index);
+            }
+        }
     }
 }
 
