@@ -1,42 +1,12 @@
 block 0
     v0 = input
     v1 = input
-    if v0 > v1 goto 3 else goto 1
+    v2 = add v0 v1
+    v3 = add v2 v1
+    v4 = add v0 v3
+    goto 1 v0
 
-# Every block must end in a branch or return and there
-# can't be branches in the middle of a block
-# So, I had to add these blocks 1, 2, and 3
-
-block 1
-    if v0 < v1 goto 4 else goto 2
-
-block 2
-    goto 5
-
-block 3
-    v2 = add v0 3
-    v3 = sub v2 v1
-    goto 6 v2 v3
-
-block 4
-    v4 = mul v0 v1
-    v5 = div v4 v1
-    goto 6 v4 v5
-
-block 5
-    v6 = add v0 v1
-    v7 = sub v6 v0
-    goto 6 v6 v7
-
-block 6 v8 v9
-    v10 = add v8 1
-    if v8 < v9 goto 8 v8 else goto 7 v10 v9
- 
-# Had to add this block to remove a critical edge
-block 7 v11 v12
-    goto 6 v11 v12
-
-block 8 v13
-    v14 = and v0 v13
-    output v14
+block 1 v5
+    v6 = input
+    v7 = add v5 v6
     return
