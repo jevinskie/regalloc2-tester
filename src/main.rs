@@ -5,10 +5,10 @@ use regalloc2::{
 use std::sync::atomic::AtomicUsize;
 
 fn main() {
-    let (input, no_of_regs) = get_input();
+    let (input, algo, no_of_regs) = get_input();
     let builder = IrBuilder::new();
     let ir = builder.build(input.lines().collect());
-    println!("{:?}", ir);
+    println!("{:#?}", ir);
     let output = regalloc2::run(
         &ir,
         &MachineEnv {
@@ -27,12 +27,11 @@ fn main() {
         &RegallocOptions {
             verbose_log: true,
             validate_ssa: true,
-            //            use_fastalloc: true,
-            algorithm: Algorithm::Fastalloc,
+            algorithm: algo,
         },
     )
     .unwrap();
-    println!("{:?}\n", output);
+    println!("{:#?}\n", output);
 
     let mut finalcode = String::new();
     for blocknum in 0..ir.blocks.len() {
@@ -595,11 +594,12 @@ fn get_max_vreg() -> usize {
     MAX_VREG_NO.load(Ordering::Relaxed)
 }
 
-fn get_input() -> (String, usize) {
+fn get_input() -> (String, Algorithm, usize) {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 3 {
-        fail("USAGE: prog [input filepath] [num of physical registers]");
+    if args.len() != 4 {
+        fail("USAGE: prog [input filepath] [algo] [num physical registers]");
     }
+    let algo = if args[2] == "ion" {Algorithm::Ion} else {Algorithm::Fastalloc};
     let filepath = args[1].clone();
     (
         std::fs::read_to_string(filepath)
@@ -608,7 +608,8 @@ fn get_input() -> (String, usize) {
             })
             .trim()
             .into(),
-        args[2].parse().unwrap_or_else(|_| {
+        algo,
+        args[3].parse().unwrap_or_else(|_| {
             fail("Failed to parse the number of registers");
         }),
     )

@@ -4,4 +4,5 @@ block 0
     v2 = add v0 v1
     v3 = add v2 v1 v0
     v4 = add v0 v3
+    output v4
     return
