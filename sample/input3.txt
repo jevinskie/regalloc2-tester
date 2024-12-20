@@ -1,42 +1,42 @@
 block 0
-    v0 = input
-    v1 = input
-    if v0 > v1 goto 3 v0 v1 else goto 1 v0 v1
+    vg0 = input
+    vg1 = input
+    if vg0 > vg1 goto 3 vg0 vg1 else goto 1 vg0 vg1
 
 # Every block must end in a branch or return and there
 # can't be branches in the middle of a block
 # So, I had to add these blocks 1, 2, and 3
 
-block 1 v2 v3
-    if v2 < v3 goto 4 v2 v3 else goto 2 v2 v3
+block 1 vg2 vg3
+    if vg2 < vg3 goto 4 vg2 vg3 else goto 2 vg2 vg3
 
-block 2 v4 v5
-    goto 5 v4 v5
+block 2 vg4 vg5
+    goto 5 vg4 vg5
 
-block 3 v6 v7
-    v8 = add v6 3
-    v9 = sub v8 v7
-    goto 6 v8 v9
+block 3 vg6 vg7
+    vg8 = add vg6 3
+    vg9 = sub vg8 vg7
+    goto 6 vg8 vg9
 
-block 4 v10 v11
-    v12 = mul v10 v11
-    v13 = div v12 v10
-    goto 6 v12 v13
+block 4 vg10 vg11
+    vg12 = mul vg10 vg11
+    vg13 = div vg12 vg10
+    goto 6 vg12 vg13
 
-block 5 v14 v15
-    v16 = add v14 v15
-    v17 = sub v16 v15
-    goto 6 v17 v16
+block 5 vg14 vg15
+    vg16 = add vg14 vg15
+    vg17 = sub vg16 vg15
+    goto 6 vg17 vg16
 
-block 6 v18 v19
-    v20 = add v18 1
-    if v19 < v20 goto 8 v19 else goto 7 v20 v18
+block 6 vg18 vg19
+    vg20 = add vg18 1
+    if vg19 < vg20 goto 8 vg19 else goto 7 vg20 vg18
  
 # Had to add this block to remove a critical edge
-block 7 v21 v22
-    goto 6 v21 v22
+block 7 vg21 vg22
+    goto 6 vg21 vg22
 
-block 8 v23
-    v24 = and v23 23
-    output v24
+block 8 vg23
+    vg24 = and vg23 23
+    output vg24
     return

@@ -5,7 +5,7 @@ use regalloc2::{
 use std::sync::atomic::AtomicUsize;
 
 fn main() {
-    let (input, algo, no_of_regs) = get_input();
+    let (input, algo, num_gp_regs, num_vec_regs) = get_input();
     let builder = IrBuilder::new();
     let ir = builder.build(input.lines().collect());
     println!("{:#?}", ir);
@@ -13,12 +13,15 @@ fn main() {
         &ir,
         &MachineEnv {
             preferred_regs_by_class: [
-                (0..no_of_regs)
+                (0..num_gp_regs)
                     .into_iter()
                     .map(|num| PReg::new(num, RegClass::Int))
                     .collect(),
                 vec![],
-                vec![],
+                (0..num_vec_regs)
+                    .into_iter()
+                    .map(|num| PReg::new(num_gp_regs + num, RegClass::Vector))
+                    .collect(),
             ],
             non_preferred_regs_by_class: [vec![], vec![], vec![]],
             scratch_by_class: [None, None, None],
@@ -60,7 +63,8 @@ fn main() {
     println!("{}", finalcode);
 }
 
-static MAX_VREG_NO: AtomicUsize = AtomicUsize::new(0);
+static MAX_VREG_GEN_NO: AtomicUsize = AtomicUsize::new(0);
+static MAX_VREG_VEC_NO: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug)]
 struct Ir {
@@ -145,7 +149,7 @@ impl regalloc2::Function for Ir {
     }
 
     fn num_vregs(&self) -> usize {
-        get_max_vreg() + 1
+        get_max_vreg(RegClass::Int) + get_max_vreg(RegClass::Vector) + 1
     }
 
     fn inst_clobbers(&self, insn: Inst) -> regalloc2::PRegSet {
@@ -199,11 +203,11 @@ impl IrBuilder {
                         .expect("Block numbers should be valid `usize`s");
                     for word in &words[2..] {
                         assert!(
-                            word.starts_with("v"),
+                            word.starts_with("vg") || word.starts_with("vv"),
                             "Block params must have valid virtual register names"
                         );
-                        assert!(word.len() > 1, "Virtual registers should have a number");
-                        let regnum = word[1..].parse::<usize>().unwrap();
+                        assert!(word.len() > 2, "Virtual registers should have a number");
+                        let regnum = word[2..].parse::<usize>().unwrap();
                         self.blockparams.push(VReg::new(regnum, RegClass::Int));
                     }
                 }
@@ -244,7 +248,7 @@ impl IrBuilder {
                 v => {
                     if v.starts_with("#") {
                         continue;
-                    } else if v.starts_with("v") {
+                    } else if v.starts_with("vg") || v.starts_with("vv") {
                         let parts: Vec<&str> = line.split("=").collect();
                         assert_eq!(parts.len(), 2);
                         let outreg = parse_vreg(parts[0].trim());
@@ -419,7 +423,7 @@ impl Instn {
         let mut operands = vec![Operand::reg_def(outreg.clone())];
         let mut parsedargs = vec![];
         for arg in args {
-            if arg.starts_with("v") {
+            if arg.starts_with("vg") || arg.starts_with("vv") {
                 operands.push(Operand::reg_use(parse_vreg(arg)));
                 parsedargs.push(InstnOperand::Operand(operands.len() - 1));
             } else {
@@ -574,32 +578,52 @@ struct BasicBlock {
 }
 
 fn parse_vreg(reg: &str) -> VReg {
-    assert!(reg.len() >= 2);
-    assert!(reg.starts_with("v"));
-    let regnum = reg[1..].parse::<usize>().unwrap();
-    update_max_vreg(regnum);
-    VReg::new(regnum, RegClass::Int)
+    assert!(reg.len() >= 3);
+    assert!(reg.starts_with("vg") || reg.starts_with("vv"));
+    let regnum = reg[2..].parse::<usize>().unwrap();
+    let regclass = match &reg[0..2] {
+        "vg" => RegClass::Int,
+        "vv" => RegClass::Vector,
+        _ => panic!("bad reg class '{}'", &reg[0..2]),
+    };
+    update_max_vreg(regnum, regclass);
+    VReg::new(regnum, regclass)
 }
 
-fn update_max_vreg(regnum: usize) {
+fn update_max_vreg(regnum: usize, regclass: RegClass) {
     use std::sync::atomic::Ordering;
-    MAX_VREG_NO.store(
-        MAX_VREG_NO.load(Ordering::Relaxed).max(regnum),
-        Ordering::Relaxed,
-    );
-}
-
-fn get_max_vreg() -> usize {
-    use std::sync::atomic::Ordering;
-    MAX_VREG_NO.load(Ordering::Relaxed)
-}
-
-fn get_input() -> (String, Algorithm, usize) {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() != 4 {
-        fail("USAGE: prog [input filepath] [algo] [num physical registers]");
+    match regclass {
+        RegClass::Int => MAX_VREG_GEN_NO.store(
+            MAX_VREG_GEN_NO.load(Ordering::Relaxed).max(regnum),
+            Ordering::Relaxed,
+        ),
+        RegClass::Vector => MAX_VREG_VEC_NO.store(
+            MAX_VREG_VEC_NO.load(Ordering::Relaxed).max(regnum),
+            Ordering::Relaxed,
+        ),
+        _ => panic!("unhandled reg class {:?}", regclass),
     }
-    let algo = if args[2] == "ion" {Algorithm::Ion} else {Algorithm::Fastalloc};
+}
+
+fn get_max_vreg(regclass: RegClass) -> usize {
+    use std::sync::atomic::Ordering;
+    match regclass {
+        RegClass::Int => MAX_VREG_GEN_NO.load(Ordering::Relaxed),
+        RegClass::Vector => MAX_VREG_VEC_NO.load(Ordering::Relaxed),
+        _ => panic!("unhandled reg class {:?}", regclass),
+    }
+}
+
+fn get_input() -> (String, Algorithm, usize, usize) {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() != 5 {
+        fail("USAGE: prog [input filepath] [algo] [# physical gen reg] [# physical vec reg]");
+    }
+    let algo: Algorithm = match args[2].as_str() {
+        "ion" => Algorithm::Ion,
+        "fastalloc" => Algorithm::Fastalloc,
+        _ => panic!("unknown algo: {}", args[2]),
+    };
     let filepath = args[1].clone();
     (
         std::fs::read_to_string(filepath)
@@ -610,7 +634,10 @@ fn get_input() -> (String, Algorithm, usize) {
             .into(),
         algo,
         args[3].parse().unwrap_or_else(|_| {
-            fail("Failed to parse the number of registers");
+            fail("Failed to parse the number of general physical registers");
+        }),
+        args[4].parse().unwrap_or_else(|_| {
+            fail("Failed to parse the number of vector physical registers");
         }),
     )
 }

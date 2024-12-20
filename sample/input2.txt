@@ -1,12 +1,12 @@
 block 0
-    v0 = input
-    v1 = input
-    v2 = add v0 v1
-    v3 = add v2 v1
-    v4 = add v0 v3
-    goto 1 v0
+    vg0 = input
+    vg1 = input
+    vg2 = add vg0 vg1
+    vg3 = add vg2 vg1
+    vg4 = add vg0 vg3
+    goto 1 vg0
 
-block 1 v5
-    v6 = input
-    v7 = add v5 v6
+block 1 vg5
+    vg6 = input
+    vg7 = add vg5 vg6
     return
