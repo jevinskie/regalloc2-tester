@@ -1,6 +1,6 @@
 use regalloc2::{
-    Allocation, Block, Edit, Inst, InstOrEdit, InstRange, MachineEnv, Operand, PReg, PRegSet,
-    RegClass, RegallocOptions, VReg,
+    Algorithm, Allocation, Block, Edit, Inst, InstOrEdit, InstRange, MachineEnv, Operand, PReg,
+    PRegSet, RegClass, RegallocOptions, VReg,
 };
 use std::sync::atomic::AtomicUsize;
 
@@ -27,7 +27,8 @@ fn main() {
         &RegallocOptions {
             verbose_log: true,
             validate_ssa: true,
-            use_fastalloc: true,
+            //            use_fastalloc: true,
+            algorithm: Algorithm::Fastalloc,
         },
     )
     .unwrap();

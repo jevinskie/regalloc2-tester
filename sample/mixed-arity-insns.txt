@@ -1,0 +1,7 @@
+block 0
+    v0 = input
+    v1 = input
+    v2 = add v0 v1
+    v3 = add v2 v1 v0
+    v4 = add v0 v3
+    return
