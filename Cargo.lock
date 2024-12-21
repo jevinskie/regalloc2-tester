@@ -18,6 +18,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fern"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4316185f709b23713e41e3195f90edef7fb00c3ed4adc79769cf09cc762a3b29"
+dependencies = [
+ "log",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -66,6 +75,8 @@ dependencies = [
 name = "regalloc2-tester"
 version = "0.1.1"
 dependencies = [
+ "fern",
+ "log",
  "regalloc2",
 ]
 
