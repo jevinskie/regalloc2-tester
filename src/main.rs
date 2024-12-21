@@ -2,6 +2,7 @@ use regalloc2::{
     Algorithm, Allocation, Block, Edit, Inst, InstOrEdit, InstRange, MachineEnv, Operand, PReg,
     PRegSet, RegClass, RegallocOptions, VReg,
 };
+use std::collections::{HashMap, hash_map};
 use std::sync::atomic::AtomicUsize;
 
 fn main() {
@@ -69,6 +70,7 @@ static MAX_VREG_VEC_NO: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug)]
 struct Ir {
     blocks: Vec<BasicBlock>,
+    vreg_name2idx: HashMap<String, usize>,
 }
 
 impl Ir {
@@ -169,6 +171,7 @@ struct IrBuilder {
     instns: Vec<Instn>,
     next_instn_index: usize,
     succs: Vec<Block>,
+    vreg_name2idx: HashMap<String, usize>,
 }
 
 impl IrBuilder {
@@ -180,6 +183,7 @@ impl IrBuilder {
             instns: vec![],
             next_instn_index: 0,
             succs: vec![],
+            vreg_name2idx: HashMap::new(),
         }
     }
 
@@ -278,6 +282,7 @@ impl IrBuilder {
         self.compute_preds();
         Ir {
             blocks: self.blocks,
+            vreg_name2idx: self.vreg_name2idx,
         }
     }
 
@@ -580,6 +585,7 @@ struct BasicBlock {
 fn parse_vreg(reg: &str) -> VReg {
     assert!(reg.len() >= 3);
     assert!(reg.starts_with("vg") || reg.starts_with("vv"));
+    println!("parse_vreg: {}", reg);
     let regnum = reg[2..].parse::<usize>().unwrap();
     let regclass = match &reg[0..2] {
         "vg" => RegClass::Int,
