@@ -1,10 +1,10 @@
 block 0
-    vg0 = input
+    vgi0 = input
     vg1 = input
     vv5 = input
-    vg2 = add vg0 vg1
-    vg3 = add vg2 vg1 vg0
-    vg4 = add vg0 vg3
+    vg2 = add vgi0 vg1
+    vg3 = add vg2 vg1 vgi0
+    vg4 = add vgi0 vg3
     vv6 = sha1x vv5 vg4
     output vg4
     output vv6

@@ -152,7 +152,10 @@ impl VRegIdx {
         return this_idx;
     }
     fn get_idx(&self, name: &TypedVRegName) -> usize {
-        assert!(self.name2idx.contains_key(&name));
+        match self.name2idx.contains_key(&name) {
+            true => (),
+            false => panic!("name2idx doesn't have key {:?}", name),
+        }
         return self.name2idx.get(name).unwrap().idx;
     }
 }
@@ -360,6 +363,7 @@ impl IrBuilder {
                                 &input[1..],
                                 self.next_instn_index,
                                 &mut self.vidx,
+                                false,
                             ));
                         }
                         println!("{:?} {:?}", self.next_instn_index, line);
@@ -516,12 +520,19 @@ enum InstnType {
 }
 
 impl Instn {
-    fn new(cmd: &str, outreg: VReg, args: &[&str], index: usize, vidx: &mut VRegIdx) -> Self {
+    fn new(
+        cmd: &str,
+        outreg: VReg,
+        args: &[&str],
+        index: usize,
+        vidx: &mut VRegIdx,
+        is_def: bool,
+    ) -> Self {
         let mut operands = vec![Operand::reg_def(outreg.clone())];
         let mut parsedargs = vec![];
         for arg in args {
             if arg.starts_with("vg") || arg.starts_with("vv") {
-                operands.push(Operand::reg_use(parse_vreg(arg, vidx, false)));
+                operands.push(Operand::reg_use(parse_vreg(arg, vidx, is_def)));
                 parsedargs.push(InstnOperand::Operand(operands.len() - 1));
             } else {
                 parsedargs.push(InstnOperand::Constant(arg.to_string()));
