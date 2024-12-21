@@ -2,7 +2,7 @@ use regalloc2::{
     Algorithm, Allocation, Block, Edit, Inst, InstOrEdit, InstRange, MachineEnv, Operand, PReg,
     PRegSet, RegClass, RegallocOptions, VReg,
 };
-use std::collections::{HashMap, hash_map};
+use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
 
 fn main() {
@@ -67,10 +67,62 @@ fn main() {
 static MAX_VREG_GEN_NO: AtomicUsize = AtomicUsize::new(0);
 static MAX_VREG_VEC_NO: AtomicUsize = AtomicUsize::new(0);
 
+fn get_reg_class(name: &str) -> RegClass {
+    match &name[..2] {
+        "vg" => RegClass::Int,
+        "vv" => RegClass::Vector,
+        _ => panic!("unhandled regclass: {:?}", name),
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct TypedVReg {
+    idx: usize,
+    class: RegClass,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct TypedVRegName {
+    name: String,
+    class: RegClass,
+}
+impl TypedVRegName {
+    fn from_str(name: &str) -> Self {
+        Self {
+            name: name[2..].to_string(),
+            class: get_reg_class(name),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct VRegIdx {
+    name2idx: HashMap<TypedVRegName, TypedVReg>,
+    int_idx: usize,
+    vec_idx: usize,
+}
+impl VRegIdx {
+    fn new() -> Self {
+        Self {
+            name2idx: HashMap::new(),
+            int_idx: 0,
+            vec_idx: 0,
+        }
+    }
+    fn get_or_add_idx(&self, name: &TypedVRegName) -> usize {
+        assert!(self.name2idx.contains_key(&name));
+        return 0;
+    }
+    fn get_idx(&mut self, name: &TypedVRegName) -> usize {
+        assert!(!self.name2idx.contains_key(&name));
+        return 0;
+    }
+}
+
 #[derive(Debug)]
 struct Ir {
     blocks: Vec<BasicBlock>,
-    vreg_name2idx: HashMap<String, usize>,
+    vidx: VRegIdx,
 }
 
 impl Ir {
@@ -171,7 +223,7 @@ struct IrBuilder {
     instns: Vec<Instn>,
     next_instn_index: usize,
     succs: Vec<Block>,
-    vreg_name2idx: HashMap<String, usize>,
+    vidx: VRegIdx,
 }
 
 impl IrBuilder {
@@ -183,7 +235,7 @@ impl IrBuilder {
             instns: vec![],
             next_instn_index: 0,
             succs: vec![],
-            vreg_name2idx: HashMap::new(),
+            vidx: VRegIdx::new(),
         }
     }
 
@@ -216,7 +268,7 @@ impl IrBuilder {
                     }
                 }
                 "if" => {
-                    let instn = Instn::cond_branch(words, self.next_instn_index);
+                    let instn = Instn::cond_branch(words, self.next_instn_index, &mut self.vidx);
                     self.succs.push(instn.to());
                     self.succs.push(instn.elseto());
                     self.instns.push(instn);
@@ -224,7 +276,7 @@ impl IrBuilder {
                     self.next_instn_index += 1;
                 }
                 "goto" => {
-                    let instn = Instn::uncond_branch(words, self.next_instn_index);
+                    let instn = Instn::uncond_branch(words, self.next_instn_index, &mut self.vidx);
                     self.succs.push(instn.to());
                     self.instns.push(instn);
                     println!("{:?} {:?}", self.next_instn_index, line);
@@ -232,8 +284,8 @@ impl IrBuilder {
                 }
                 "output" => {
                     assert_eq!(words.len(), 2);
-                    let reg = parse_vreg(words[1]);
-                    self.instns.push(Instn {
+                    let reg = parse_vreg(words[1], &mut self.vidx);
+                    (&mut self.instns).push(Instn {
                         index: Inst::new(self.next_instn_index),
                         instntype: InstnType::Output([Operand::reg_use(reg)]),
                     });
@@ -255,7 +307,8 @@ impl IrBuilder {
                     } else if v.starts_with("vg") || v.starts_with("vv") {
                         let parts: Vec<&str> = line.split("=").collect();
                         assert_eq!(parts.len(), 2);
-                        let outreg = parse_vreg(parts[0].trim());
+                        // let class: RegClass = get_reg_class(v);
+                        let outreg = parse_vreg(parts[0].trim(), &mut self.vidx);
                         let input: Vec<&str> = parts[1].trim().split(" ").collect();
                         assert!(!input.is_empty());
                         let cmd = input[0];
@@ -268,6 +321,7 @@ impl IrBuilder {
                                 outreg,
                                 &input[1..],
                                 self.next_instn_index,
+                                &mut self.vidx,
                             ));
                         }
                         println!("{:?} {:?}", self.next_instn_index, line);
@@ -282,7 +336,7 @@ impl IrBuilder {
         self.compute_preds();
         Ir {
             blocks: self.blocks,
-            vreg_name2idx: self.vreg_name2idx,
+            vidx: self.vidx,
         }
     }
 
@@ -424,12 +478,12 @@ enum InstnType {
 }
 
 impl Instn {
-    fn new(cmd: &str, outreg: VReg, args: &[&str], index: usize) -> Self {
+    fn new(cmd: &str, outreg: VReg, args: &[&str], index: usize, vidx: &mut VRegIdx) -> Self {
         let mut operands = vec![Operand::reg_def(outreg.clone())];
         let mut parsedargs = vec![];
         for arg in args {
             if arg.starts_with("vg") || arg.starts_with("vv") {
-                operands.push(Operand::reg_use(parse_vreg(arg)));
+                operands.push(Operand::reg_use(parse_vreg(arg, vidx)));
                 parsedargs.push(InstnOperand::Operand(operands.len() - 1));
             } else {
                 parsedargs.push(InstnOperand::Constant(arg.to_string()));
@@ -445,17 +499,17 @@ impl Instn {
         }
     }
 
-    fn cond_branch(words: Vec<&str>, index: usize) -> Self {
+    fn cond_branch(words: Vec<&str>, index: usize, vidx: &mut VRegIdx) -> Self {
         assert!(words.len() >= 9);
-        let firstarg = Operand::reg_use(parse_vreg(words[1]));
+        let firstarg = Operand::reg_use(parse_vreg(words[1], vidx));
         let cmp = words[2];
-        let secondarg = Operand::reg_use(parse_vreg(words[3]));
+        let secondarg = Operand::reg_use(parse_vreg(words[3], vidx));
         assert_eq!(words[4], "goto");
         let to = words[5].parse::<usize>().unwrap();
         let mut toargs = vec![];
         let mut i = 6;
         while i < words.len() && words[i] != "else" {
-            toargs.push(parse_vreg(words[i]));
+            toargs.push(parse_vreg(words[i], vidx));
             i += 1;
         }
         assert!(i < words.len(), "There should be an else branch");
@@ -466,7 +520,7 @@ impl Instn {
         let mut elsetoargs = vec![];
         let mut j = i + 2 + 1;
         while j < words.len() {
-            elsetoargs.push(parse_vreg(words[j]));
+            elsetoargs.push(parse_vreg(words[j], vidx));
             j += 1;
         }
         Self {
@@ -480,13 +534,13 @@ impl Instn {
         }
     }
 
-    fn uncond_branch(words: Vec<&str>, index: usize) -> Self {
+    fn uncond_branch(words: Vec<&str>, index: usize, vidx: &mut VRegIdx) -> Self {
         assert!(words.len() >= 2);
         let to = Block::new(words[1].parse::<usize>().unwrap());
         let mut branchargs = vec![];
         if words.len() > 2 {
             for reg in &words[2..] {
-                branchargs.push(parse_vreg(reg));
+                branchargs.push(parse_vreg(reg, vidx));
             }
         }
         Self {
@@ -582,18 +636,14 @@ struct BasicBlock {
     instns: Vec<Instn>,
 }
 
-fn parse_vreg(reg: &str) -> VReg {
+fn parse_vreg(reg: &str, vidx: &mut VRegIdx) -> VReg {
     assert!(reg.len() >= 3);
     assert!(reg.starts_with("vg") || reg.starts_with("vv"));
     println!("parse_vreg: {}", reg);
-    let regnum = reg[2..].parse::<usize>().unwrap();
-    let regclass = match &reg[0..2] {
-        "vg" => RegClass::Int,
-        "vv" => RegClass::Vector,
-        _ => panic!("bad reg class '{}'", &reg[0..2]),
-    };
-    update_max_vreg(regnum, regclass);
-    VReg::new(regnum, regclass)
+    let vname = TypedVRegName::from_str(reg);
+    let idx = vidx.get_idx(&vname);
+    update_max_vreg(idx, vname.class);
+    VReg::new(idx, vname.class)
 }
 
 fn update_max_vreg(regnum: usize, regclass: RegClass) {
