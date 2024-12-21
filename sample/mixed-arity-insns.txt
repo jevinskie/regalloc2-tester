@@ -5,6 +5,7 @@ block 0
     vg2 = add vg0 vg1
     vg3 = add vg2 vg1 vg0
     vg4 = add vg0 vg3
+    vv6 = sha1x vv5 vg4
     output vg4
-    output vv5
+    output vv6
     return
